@@ -36,6 +36,7 @@ from .sgformer import SGFormer
 # Deprecated:
 from torch_geometric.explain.algorithm.captum import (to_captum_input,
                                                       captum_output_to_dicts)
+from .nbfnet import NBFNet
 
 __all__ = classes = [
     'MLP',
@@ -84,4 +85,5 @@ __all__ = classes = [
     'MoleculeGPT',
     'GLEM',
     'SGFormer',
+    'NBFNet',
 ]
