@@ -1,13 +1,13 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch import Tensor
 
+import torch_geometric.typing
 from torch_geometric.nn.pool.select import SelectOutput
 
 
-@torch.jit.script
 @dataclass(init=False)
 class ConnectOutput:
     r"""The output of the :class:`Connect` method, which holds the coarsened
@@ -49,6 +49,10 @@ class ConnectOutput:
         self.batch = batch
 
 
+if torch_geometric.typing.WITH_PT113:
+    ConnectOutput = torch.jit.script(ConnectOutput)
+
+
 class Connect(torch.nn.Module):
     r"""An abstract base class for implementing custom edge connection
     operators as described in the `"Understanding Pooling in Graph Neural
@@ -62,7 +66,6 @@ class Connect(torch.nn.Module):
     """
     def reset_parameters(self):
         r"""Resets all learnable parameters of the module."""
-        pass
 
     def forward(
         self,
@@ -70,8 +73,9 @@ class Connect(torch.nn.Module):
         edge_index: Tensor,
         edge_attr: Optional[Tensor] = None,
         batch: Optional[Tensor] = None,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
-        r"""
+    ) -> ConnectOutput:
+        r"""Forward pass.
+
         Args:
             select_output (SelectOutput): The output of :class:`Select`.
             edge_index (torch.Tensor): The edge indices.

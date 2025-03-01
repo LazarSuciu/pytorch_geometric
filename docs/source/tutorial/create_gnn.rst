@@ -72,7 +72,7 @@ The full layer implementation is shown below:
         def __init__(self, in_channels, out_channels):
             super().__init__(aggr='add')  # "Add" aggregation (Step 5).
             self.lin = Linear(in_channels, out_channels, bias=False)
-            self.bias = Parameter(torch.Tensor(out_channels))
+            self.bias = Parameter(torch.empty(out_channels))
 
             self.reset_parameters()
 
@@ -101,7 +101,7 @@ The full layer implementation is shown below:
             out = self.propagate(edge_index, x=x, norm=norm)
 
             # Step 6: Apply a final bias vector.
-            out += self.bias
+            out = out + self.bias
 
             return out
 

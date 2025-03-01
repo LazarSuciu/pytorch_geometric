@@ -7,7 +7,7 @@ from torch.nn import BatchNorm1d, Parameter
 from torch_geometric.nn import inits
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.models import MLP
-from torch_geometric.typing import Adj, OptTensor, SparseTensor
+from torch_geometric.typing import Adj, OptTensor
 from torch_geometric.utils import spmm
 
 
@@ -17,9 +17,9 @@ class SparseLinear(MessagePassing):
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.weight = Parameter(torch.Tensor(in_channels, out_channels))
+        self.weight = Parameter(torch.empty(in_channels, out_channels))
         if bias:
-            self.bias = Parameter(torch.Tensor(out_channels))
+            self.bias = Parameter(torch.empty(out_channels))
         else:
             self.register_parameter('bias', None)
 
@@ -30,16 +30,6 @@ class SparseLinear(MessagePassing):
                               a=math.sqrt(5))
         inits.uniform(self.in_channels, self.bias)
 
-    @torch.jit._overload_method
-    def forward(self, edge_index, edge_weight=None):
-        # type: (SparseTensor, OptTensor) -> Tensor
-        pass
-
-    @torch.jit._overload_method
-    def forward(self, edge_index, edge_weight=None):
-        # type: (Tensor, OptTensor) -> Tensor
-        pass
-
     def forward(
         self,
         edge_index: Adj,
@@ -47,7 +37,7 @@ class SparseLinear(MessagePassing):
     ) -> Tensor:
         # propagate_type: (weight: Tensor, edge_weight: OptTensor)
         out = self.propagate(edge_index, weight=self.weight,
-                             edge_weight=edge_weight, size=None)
+                             edge_weight=edge_weight)
 
         if self.bias is not None:
             out = out + self.bias
@@ -60,15 +50,14 @@ class SparseLinear(MessagePassing):
         else:
             return edge_weight.view(-1, 1) * weight_j
 
-    def message_and_aggregate(self, adj_t: SparseTensor,
-                              weight: Tensor) -> Tensor:
+    def message_and_aggregate(self, adj_t: Adj, weight: Tensor) -> Tensor:
         return spmm(adj_t, weight, reduce=self.aggr)
 
 
 class LINKX(torch.nn.Module):
     r"""The LINKX model from the `"Large Scale Learning on Non-Homophilous
     Graphs: New Benchmarks and Strong Simple Methods"
-    <https://arxiv.org/abs/2110.14446>`_ paper
+    <https://arxiv.org/abs/2110.14446>`_ paper.
 
     .. math::
         \mathbf{H}_{\mathbf{A}} &= \textrm{MLP}_{\mathbf{A}}(\mathbf{A})
@@ -149,23 +138,13 @@ class LINKX(torch.nn.Module):
         self.cat_lin2.reset_parameters()
         self.final_mlp.reset_parameters()
 
-    @torch.jit._overload_method
-    def forward(self, x, edge_index, edge_weight=None):
-        # type: (OptTensor, SparseTensor, OptTensor) -> Tensor
-        pass
-
-    @torch.jit._overload_method
-    def forward(self, x, edge_index, edge_weight=None):
-        # type: (OptTensor, Tensor, OptTensor) -> Tensor
-        pass
-
     def forward(
         self,
         x: OptTensor,
         edge_index: Adj,
         edge_weight: OptTensor = None,
     ) -> Tensor:
-        """"""
+        """"""  # noqa: D419
         out = self.edge_lin(edge_index, edge_weight)
 
         if self.edge_norm is not None and self.edge_mlp is not None:
@@ -181,45 +160,6 @@ class LINKX(torch.nn.Module):
             out = out + self.cat_lin2(x)
 
         return self.final_mlp(out.relu_())
-
-    def jittable(self, typing: str) -> torch.nn.Module:  # pragma: no cover
-        edge_index_type = typing.split(',')[1].strip()
-
-        class EdgeIndexJittable(torch.nn.Module):
-            def __init__(self, child):
-                super().__init__()
-                self.child = child
-
-            def reset_parameters(self):
-                self.child.reset_parameters()
-
-            def forward(self, x: Tensor, edge_index: Tensor,
-                        edge_weight: OptTensor = None) -> Tensor:
-                return self.child(x, edge_index, edge_weight)
-
-        class SparseTensorJittable(torch.nn.Module):
-            def __init__(self, child):
-                super().__init__()
-                self.child = child
-
-            def reset_parameters(self):
-                self.child.reset_parameters()
-
-            def forward(self, x: Tensor, edge_index: SparseTensor,
-                        edge_weight: OptTensor = None):
-                return self.child(x, edge_index, edge_weight)
-
-        if self.edge_lin.jittable is not None:
-            self.edge_lin = self.edge_lin.jittable()
-
-        if 'Tensor' == edge_index_type:
-            jittable_module = EdgeIndexJittable(self)
-        elif 'SparseTensor' == edge_index_type:
-            jittable_module = SparseTensorJittable(self)
-        else:
-            raise ValueError(f"Could not parse types '{typing}'")
-
-        return jittable_module
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}(num_nodes={self.num_nodes}, '

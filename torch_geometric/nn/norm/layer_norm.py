@@ -13,7 +13,7 @@ from torch_geometric.utils import degree, scatter
 class LayerNorm(torch.nn.Module):
     r"""Applies layer normalization over each individual example in a batch
     of features as described in the `"Layer Normalization"
-    <https://arxiv.org/abs/1607.06450>`_ paper
+    <https://arxiv.org/abs/1607.06450>`_ paper.
 
     .. math::
         \mathbf{x}^{\prime}_i = \frac{\mathbf{x} -
@@ -51,8 +51,8 @@ class LayerNorm(torch.nn.Module):
         self.mode = mode
 
         if affine:
-            self.weight = Parameter(torch.Tensor(in_channels))
-            self.bias = Parameter(torch.Tensor(in_channels))
+            self.weight = Parameter(torch.empty(in_channels))
+            self.bias = Parameter(torch.empty(in_channels))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
@@ -66,7 +66,8 @@ class LayerNorm(torch.nn.Module):
 
     def forward(self, x: Tensor, batch: OptTensor = None,
                 batch_size: Optional[int] = None) -> Tensor:
-        r"""
+        r"""Forward pass.
+
         Args:
             x (torch.Tensor): The source tensor.
             batch (torch.Tensor, optional): The batch vector
@@ -151,8 +152,8 @@ class HeteroLayerNorm(torch.nn.Module):
         self.affine = affine
 
         if affine:
-            self.weight = Parameter(torch.Tensor(num_types, in_channels))
-            self.bias = Parameter(torch.Tensor(num_types, in_channels))
+            self.weight = Parameter(torch.empty(num_types, in_channels))
+            self.bias = Parameter(torch.empty(num_types, in_channels))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
@@ -171,7 +172,8 @@ class HeteroLayerNorm(torch.nn.Module):
         type_vec: OptTensor = None,
         type_ptr: Optional[Union[Tensor, List[int]]] = None,
     ) -> Tensor:
-        r"""
+        r"""Forward pass.
+
         .. note::
             Either :obj:`type_vec` or :obj:`type_ptr` needs to be specified.
             In general, relying on :obj:`type_ptr` is more efficient in case

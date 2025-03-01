@@ -43,6 +43,12 @@ class LightGCN(torch.nn.Module):
         by :obj:`edge_index` while rankings or link probabilities are computed
         according to the edges specified by :obj:`edge_label_index`.
 
+    .. note::
+
+        For an example of using :class:`LightGCN`, see `examples/lightgcn.py
+        <https://github.com/pyg-team/pytorch_geometric/blob/master/examples/
+        lightgcn.py>`_.
+
     Args:
         num_nodes (int): The number of nodes in the graph.
         embedding_dim (int): The dimensionality of node embeddings.
@@ -145,6 +151,14 @@ class LightGCN(torch.nn.Module):
         r"""Predict links between nodes specified in :obj:`edge_label_index`.
 
         Args:
+            edge_index (torch.Tensor or SparseTensor): Edge tensor specifying
+                the connectivity of the graph.
+            edge_label_index (torch.Tensor, optional): Edge tensor specifying
+                the node pairs for which to compute probabilities.
+                If :obj:`edge_label_index` is set to :obj:`None`, all edges in
+                :obj:`edge_index` will be used instead. (default: :obj:`None`)
+            edge_weight (torch.Tensor, optional): The weight of each edge in
+                :obj:`edge_index`. (default: :obj:`None`)
             prob (bool, optional): Whether probabilities should be returned.
                 (default: :obj:`False`)
         """
@@ -158,10 +172,15 @@ class LightGCN(torch.nn.Module):
         src_index: OptTensor = None,
         dst_index: OptTensor = None,
         k: int = 1,
+        sorted: bool = True,
     ) -> Tensor:
         r"""Get top-:math:`k` recommendations for nodes in :obj:`src_index`.
 
         Args:
+            edge_index (torch.Tensor or SparseTensor): Edge tensor specifying
+                the connectivity of the graph.
+            edge_weight (torch.Tensor, optional): The weight of each edge in
+                :obj:`edge_index`. (default: :obj:`None`)
             src_index (torch.Tensor, optional): Node indices for which
                 recommendations should be generated.
                 If set to :obj:`None`, all nodes will be used.
@@ -171,6 +190,8 @@ class LightGCN(torch.nn.Module):
                 If set to :obj:`None`, all nodes will be used.
                 (default: :obj:`None`)
             k (int, optional): Number of recommendations. (default: :obj:`1`)
+            sorted (bool, optional): Whether to sort the recommendations
+                by score. (default: :obj:`True`)
         """
         out_src = out_dst = self.get_embedding(edge_index, edge_weight)
 
@@ -181,7 +202,7 @@ class LightGCN(torch.nn.Module):
             out_dst = out_dst[dst_index]
 
         pred = out_src @ out_dst.t()
-        top_index = pred.topk(k, dim=-1).indices
+        top_index = pred.topk(k, dim=-1, sorted=sorted).indices
 
         if dst_index is not None:  # Map local top-indices to original indices.
             top_index = dst_index[top_index.view(-1)].view(*top_index.size())
@@ -254,7 +275,7 @@ class BPRLoss(_Loss):
         \sum_{j \not\in \mathcal{N}_u} \ln \sigma(\hat{y}_{ui} - \hat{y}_{uj})
         + \lambda \vert\vert \textbf{x}^{(0)} \vert\vert^2
 
-    where :math:`lambda` controls the :math:`L_2` regularization strength.
+    where :math:`\lambda` controls the :math:`L_2` regularization strength.
     We compute the mean BPR loss for simplicity.
 
     Args:

@@ -11,7 +11,7 @@ from torch_geometric.utils import scatter
 class GraphNorm(torch.nn.Module):
     r"""Applies graph normalization over individual graphs as described in the
     `"GraphNorm: A Principled Approach to Accelerating Graph Neural Network
-    Training" <https://arxiv.org/abs/2009.03294>`_ paper
+    Training" <https://arxiv.org/abs/2009.03294>`_ paper.
 
     .. math::
         \mathbf{x}^{\prime}_i = \frac{\mathbf{x} - \alpha \odot
@@ -33,9 +33,9 @@ class GraphNorm(torch.nn.Module):
         self.in_channels = in_channels
         self.eps = eps
 
-        self.weight = torch.nn.Parameter(torch.Tensor(in_channels))
-        self.bias = torch.nn.Parameter(torch.Tensor(in_channels))
-        self.mean_scale = torch.nn.Parameter(torch.Tensor(in_channels))
+        self.weight = torch.nn.Parameter(torch.empty(in_channels))
+        self.bias = torch.nn.Parameter(torch.empty(in_channels))
+        self.mean_scale = torch.nn.Parameter(torch.empty(in_channels))
 
         self.reset_parameters()
 
@@ -47,7 +47,8 @@ class GraphNorm(torch.nn.Module):
 
     def forward(self, x: Tensor, batch: OptTensor = None,
                 batch_size: Optional[int] = None) -> Tensor:
-        r"""
+        r"""Forward pass.
+
         Args:
             x (torch.Tensor): The source tensor.
             batch (torch.Tensor, optional): The batch vector

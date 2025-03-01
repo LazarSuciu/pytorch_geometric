@@ -1,27 +1,27 @@
+r"""Pooling package."""
+
 import warnings
 from typing import Optional
 from torch import Tensor
 
 import torch_geometric.typing
-from torch_geometric.typing import OptTensor
+from torch_geometric.typing import OptTensor, torch_cluster
 
-from .asap import ASAPooling
 from .avg_pool import avg_pool, avg_pool_neighbor_x, avg_pool_x
-from .edge_pool import EdgePooling
 from .glob import global_add_pool, global_max_pool, global_mean_pool
+from .knn import (KNNIndex, L2KNNIndex, MIPSKNNIndex, ApproxL2KNNIndex,
+                  ApproxMIPSKNNIndex)
 from .graclus import graclus
 from .max_pool import max_pool, max_pool_neighbor_x, max_pool_x
-from .mem_pool import MemPooling
-from .pan_pool import PANPooling
-from .sag_pool import SAGPooling
 from .topk_pool import TopKPooling
+from .sag_pool import SAGPooling
+from .edge_pool import EdgePooling
+from .cluster_pool import ClusterPooling
+from .asap import ASAPooling
+from .pan_pool import PANPooling
+from .mem_pool import MemPooling
 from .voxel_grid import voxel_grid
 from .approx_knn import approx_knn, approx_knn_graph
-
-try:
-    import torch_cluster
-except ImportError:
-    torch_cluster = None
 
 
 def fps(
@@ -41,7 +41,7 @@ def fps(
         import torch
         from torch_geometric.nn import fps
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch = torch.tensor([0, 0, 0, 0])
         index = fps(x, batch, ratio=0.5)
 
@@ -82,9 +82,9 @@ def knn(
         import torch
         from torch_geometric.nn import knn
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch_x = torch.tensor([0, 0, 0, 0])
-        y = torch.Tensor([[-1, 0], [1, 0]])
+        y = torch.tensor([[-1.0, 0.0], [1.0, 0.0]])
         batch_y = torch.tensor([0, 0])
         assign_index = knn(x, y, 2, batch_x, batch_y)
 
@@ -135,7 +135,7 @@ def knn_graph(
         import torch
         from torch_geometric.nn import knn_graph
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch = torch.tensor([0, 0, 0, 0])
         edge_index = knn_graph(x, k=2, batch=batch, loop=False)
 
@@ -192,9 +192,9 @@ def radius(
         import torch
         from torch_geometric.nn import radius
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch_x = torch.tensor([0, 0, 0, 0])
-        y = torch.Tensor([[-1, 0], [1, 0]])
+        y = torch.tensor([[-1.0, 0.0], [1.0, 0.0]])
         batch_y = torch.tensor([0, 0])
         assign_index = radius(x, y, 1.5, batch_x, batch_y)
 
@@ -219,6 +219,13 @@ def radius(
             Automatically calculated if not given. (default: :obj:`None`)
 
     :rtype: :class:`torch.Tensor`
+
+    .. warning::
+
+        The CPU implementation of :meth:`radius` with :obj:`max_num_neighbors`
+        is biased towards certain quadrants.
+        Consider setting :obj:`max_num_neighbors` to :obj:`None` or moving
+        inputs to GPU before proceeding.
     """
     if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
         return torch_cluster.radius(x, y, r, batch_x, batch_y,
@@ -244,7 +251,7 @@ def radius_graph(
         import torch
         from torch_geometric.nn import radius_graph
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch = torch.tensor([0, 0, 0, 0])
         edge_index = radius_graph(x, r=1.5, batch=batch, loop=False)
 
@@ -269,6 +276,13 @@ def radius_graph(
             Automatically calculated if not given. (default: :obj:`None`)
 
     :rtype: :class:`torch.Tensor`
+
+    .. warning::
+
+        The CPU implementation of :meth:`radius_graph` with
+        :obj:`max_num_neighbors` is biased towards certain quadrants.
+        Consider setting :obj:`max_num_neighbors` to :obj:`None` or moving
+        inputs to GPU before proceeding.
     """
     if batch is not None and x.device != batch.device:
         warnings.warn("Input tensor 'x' and 'batch' are on different devices "
@@ -296,9 +310,9 @@ def nearest(
         import torch
         from torch_geometric.nn import nearest
 
-        x = torch.Tensor([[-1, -1], [-1, 1], [1, -1], [1, 1]])
+        x = torch.tensor([[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]])
         batch_x = torch.tensor([0, 0, 0, 0])
-        y = torch.Tensor([[-1, 0], [1, 0]])
+        y = torch.tensor([[-1.0, 0.0], [1.0, 0.0]])
         batch_y = torch.tensor([0, 0])
         cluster = nearest(x, y, batch_x, batch_y)
 
@@ -323,9 +337,15 @@ __all__ = [
     'global_add_pool',
     'global_mean_pool',
     'global_max_pool',
+    'KNNIndex',
+    'L2KNNIndex',
+    'MIPSKNNIndex',
+    'ApproxL2KNNIndex',
+    'ApproxMIPSKNNIndex',
     'TopKPooling',
     'SAGPooling',
     'EdgePooling',
+    'ClusterPooling',
     'ASAPooling',
     'PANPooling',
     'MemPooling',

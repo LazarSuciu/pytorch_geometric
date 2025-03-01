@@ -1,4 +1,3 @@
-import copy
 from typing import Callable, Optional, Tuple, Union
 
 import torch
@@ -7,7 +6,7 @@ from torch import Tensor
 from torch.nn import Linear
 
 from torch_geometric.nn import LEConv
-from torch_geometric.nn.pool.select.topk import topk
+from torch_geometric.nn.pool.select import SelectTopK
 from torch_geometric.utils import (
     add_remaining_self_loops,
     remove_self_loops,
@@ -68,6 +67,9 @@ class ASAPooling(torch.nn.Module):
                                          **kwargs)
         else:
             self.gnn_intra_cluster = None
+
+        self.select = SelectTopK(1, ratio)
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -77,6 +79,7 @@ class ASAPooling(torch.nn.Module):
         self.gnn_score.reset_parameters()
         if self.gnn_intra_cluster is not None:
             self.gnn_intra_cluster.reset_parameters()
+        self.select.reset_parameters()
 
     def forward(
         self,
@@ -85,7 +88,8 @@ class ASAPooling(torch.nn.Module):
         edge_weight: Optional[Tensor] = None,
         batch: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor, Optional[Tensor], Tensor, Tensor]:
-        r"""
+        r"""Forward pass.
+
         Args:
             x (torch.Tensor): The node feature matrix.
             edge_index (torch.Tensor): The edge indices.
@@ -135,7 +139,7 @@ class ASAPooling(torch.nn.Module):
 
         # Cluster selection.
         fitness = self.gnn_score(x, edge_index).sigmoid().view(-1)
-        perm = topk(fitness, self.ratio, batch)
+        perm = self.select(fitness, batch).node_index
         x = x[perm] * fitness[perm].view(-1, 1)
         batch = batch[perm]
 
@@ -158,14 +162,6 @@ class ASAPooling(torch.nn.Module):
                 edge_index, edge_weight)
 
         return x, edge_index, edge_weight, batch, perm
-
-    @torch.jit.unused
-    def jittable(self) -> 'ASAPooling':
-        out = copy.deepcopy(self)
-        out.gnn_score = out.gnn_score.jittable()
-        if out.gnn_intra_cluster is not None:
-            out.gnn_intra_cluster = out.gnn_intra_cluster.jittable()
-        return out
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '

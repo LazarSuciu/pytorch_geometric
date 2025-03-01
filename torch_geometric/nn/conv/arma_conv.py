@@ -14,7 +14,8 @@ from torch_geometric.utils import spmm
 
 class ARMAConv(MessagePassing):
     r"""The ARMA graph convolutional operator from the `"Graph Neural Networks
-    with Convolutional ARMA Filters" <https://arxiv.org/abs/1901.01343>`_ paper
+    with Convolutional ARMA Filters" <https://arxiv.org/abs/1901.01343>`_
+    paper.
 
     .. math::
         \mathbf{X}^{\prime} = \frac{1}{K} \sum_{k=1}^K \mathbf{X}_k^{(T)},
@@ -76,10 +77,10 @@ class ARMAConv(MessagePassing):
         K, T, F_in, F_out = num_stacks, num_layers, in_channels, out_channels
         T = 1 if self.shared_weights else T
 
-        self.weight = Parameter(torch.Tensor(max(1, T - 1), K, F_out, F_out))
+        self.weight = Parameter(torch.empty(max(1, T - 1), K, F_out, F_out))
         if in_channels > 0:
-            self.init_weight = Parameter(torch.Tensor(K, F_in, F_out))
-            self.root_weight = Parameter(torch.Tensor(T, K, F_in, F_out))
+            self.init_weight = Parameter(torch.empty(K, F_in, F_out))
+            self.root_weight = Parameter(torch.empty(T, K, F_in, F_out))
         else:
             self.init_weight = torch.nn.parameter.UninitializedParameter()
             self.root_weight = torch.nn.parameter.UninitializedParameter()
@@ -87,7 +88,7 @@ class ARMAConv(MessagePassing):
                 self.initialize_parameters)
 
         if bias:
-            self.bias = Parameter(torch.Tensor(T, K, 1, F_out))
+            self.bias = Parameter(torch.empty(T, K, 1, F_out))
         else:
             self.register_parameter('bias', None)
 
@@ -123,8 +124,7 @@ class ARMAConv(MessagePassing):
                 out = out @ self.weight[0 if self.shared_weights else t - 1]
 
             # propagate_type: (x: Tensor, edge_weight: OptTensor)
-            out = self.propagate(edge_index, x=out, edge_weight=edge_weight,
-                                 size=None)
+            out = self.propagate(edge_index, x=out, edge_weight=edge_weight)
 
             root = F.dropout(x, p=self.dropout, training=self.training)
             root = root @ self.root_weight[0 if self.shared_weights else t]
@@ -141,7 +141,7 @@ class ARMAConv(MessagePassing):
     def message(self, x_j: Tensor, edge_weight: Tensor) -> Tensor:
         return edge_weight.view(-1, 1) * x_j
 
-    def message_and_aggregate(self, adj_t: SparseTensor, x: Tensor) -> Tensor:
+    def message_and_aggregate(self, adj_t: Adj, x: Tensor) -> Tensor:
         return spmm(adj_t, x, reduce=self.aggr)
 
     @torch.no_grad()

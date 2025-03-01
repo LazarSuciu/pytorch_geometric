@@ -1,9 +1,11 @@
 import os.path as osp
+import time
 
 import torch
 import torch.nn.functional as F
 from sklearn.linear_model import LogisticRegression
 
+import torch_geometric
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.loader import LinkNeighborLoader
@@ -21,8 +23,12 @@ train_loader = LinkNeighborLoader(
     neg_sampling_ratio=1.0,
     num_neighbors=[10, 10],
 )
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch_geometric.is_xpu_available():
+    device = torch.device('xpu')
+else:
+    device = torch.device('cpu')
 data = data.to(device, 'x', 'edge_index')
 
 model = GraphSAGE(
@@ -67,8 +73,12 @@ def test():
     return val_acc, test_acc
 
 
+times = []
 for epoch in range(1, 51):
+    start = time.time()
     loss = train()
     val_acc, test_acc = test()
     print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, '
           f'Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+    times.append(time.time() - start)
+print(f"Median time per epoch: {torch.tensor(times).median():.4f}s")

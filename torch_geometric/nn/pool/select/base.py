@@ -4,8 +4,9 @@ from typing import Optional
 import torch
 from torch import Tensor
 
+import torch_geometric.typing
 
-@torch.jit.script
+
 @dataclass(init=False)
 class SelectOutput:
     r"""The output of the :class:`Select` method, which holds an assignment
@@ -63,6 +64,10 @@ class SelectOutput:
         self.weight = weight
 
 
+if torch_geometric.typing.WITH_PT113:
+    SelectOutput = torch.jit.script(SelectOutput)
+
+
 class Select(torch.nn.Module):
     r"""An abstract base class for implementing custom node selections as
     described in the `"Understanding Pooling in Graph Neural Networks"
@@ -75,7 +80,6 @@ class Select(torch.nn.Module):
     """
     def reset_parameters(self):
         r"""Resets all learnable parameters of the module."""
-        pass
 
     def forward(self, *args, **kwargs) -> SelectOutput:
         raise NotImplementedError

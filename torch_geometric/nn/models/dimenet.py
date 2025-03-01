@@ -1,5 +1,6 @@
 import os
 import os.path as osp
+from functools import partial
 from math import pi as PI
 from math import sqrt
 from typing import Callable, Dict, Optional, Tuple, Union
@@ -10,7 +11,6 @@ from torch import Tensor
 from torch.nn import Embedding, Linear
 
 from torch_geometric.data import Dataset, download_url
-from torch_geometric.data.makedirs import makedirs
 from torch_geometric.nn import radius_graph
 from torch_geometric.nn.inits import glorot_orthogonal
 from torch_geometric.nn.resolver import activation_resolver
@@ -56,7 +56,7 @@ class BesselBasisLayer(torch.nn.Module):
         self.cutoff = cutoff
         self.envelope = Envelope(envelope_exponent)
 
-        self.freq = torch.nn.Parameter(torch.Tensor(num_radial))
+        self.freq = torch.nn.Parameter(torch.empty(num_radial))
 
         self.reset_parameters()
 
@@ -102,13 +102,17 @@ class SphericalBasisLayer(torch.nn.Module):
         for i in range(num_spherical):
             if i == 0:
                 sph1 = sym.lambdify([theta], sph_harm_forms[i][0], modules)(0)
-                self.sph_funcs.append(lambda x: torch.zeros_like(x) + sph1)
+                self.sph_funcs.append(partial(self._sph_to_tensor, sph1))
             else:
                 sph = sym.lambdify([theta], sph_harm_forms[i][0], modules)
                 self.sph_funcs.append(sph)
             for j in range(num_radial):
                 bessel = sym.lambdify([x], bessel_forms[i][j], modules)
                 self.bessel_funcs.append(bessel)
+
+    @staticmethod
+    def _sph_to_tensor(sph, x: Tensor) -> Tensor:
+        return torch.zeros_like(x) + sph
 
     def forward(self, dist: Tensor, angle: Tensor, idx_kj: Tensor) -> Tensor:
         dist = dist / self.cutoff
@@ -186,7 +190,7 @@ class InteractionBlock(torch.nn.Module):
         self.lin_ji = Linear(hidden_channels, hidden_channels)
 
         self.W = torch.nn.Parameter(
-            torch.Tensor(hidden_channels, num_bilinear, hidden_channels))
+            torch.empty(hidden_channels, num_bilinear, hidden_channels))
 
         self.layers_before_skip = torch.nn.ModuleList([
             ResidualLayer(hidden_channels, act) for _ in range(num_before_skip)
@@ -271,7 +275,7 @@ class InteractionPPBlock(torch.nn.Module):
         ])
         self.lin = Linear(hidden_channels, hidden_channels)
         self.layers_after_skip = torch.nn.ModuleList([
-            ResidualLayer(hidden_channels, act) for _ in range(num_before_skip)
+            ResidualLayer(hidden_channels, act) for _ in range(num_after_skip)
         ])
 
         self.reset_parameters()
@@ -338,9 +342,14 @@ class OutputBlock(torch.nn.Module):
         out_channels: int,
         num_layers: int,
         act: Callable,
+        output_initializer: str = 'zeros',
     ):
+        assert output_initializer in {'zeros', 'glorot_orthogonal'}
+
         super().__init__()
+
         self.act = act
+        self.output_initializer = output_initializer
 
         self.lin_rbf = Linear(num_radial, hidden_channels, bias=False)
         self.lins = torch.nn.ModuleList()
@@ -355,7 +364,10 @@ class OutputBlock(torch.nn.Module):
         for lin in self.lins:
             glorot_orthogonal(lin.weight, scale=2.0)
             lin.bias.data.fill_(0)
-        self.lin.weight.data.fill_(0)
+        if self.output_initializer == 'zeros':
+            self.lin.weight.data.fill_(0)
+        elif self.output_initializer == 'glorot_orthogonal':
+            glorot_orthogonal(self.lin.weight, scale=2.0)
 
     def forward(self, x: Tensor, rbf: Tensor, i: Tensor,
                 num_nodes: Optional[int] = None) -> Tensor:
@@ -375,9 +387,14 @@ class OutputPPBlock(torch.nn.Module):
         out_channels: int,
         num_layers: int,
         act: Callable,
+        output_initializer: str = 'zeros',
     ):
+        assert output_initializer in {'zeros', 'glorot_orthogonal'}
+
         super().__init__()
+
         self.act = act
+        self.output_initializer = output_initializer
 
         self.lin_rbf = Linear(num_radial, hidden_channels, bias=False)
 
@@ -396,7 +413,10 @@ class OutputPPBlock(torch.nn.Module):
         for lin in self.lins:
             glorot_orthogonal(lin.weight, scale=2.0)
             lin.bias.data.fill_(0)
-        self.lin.weight.data.fill_(0)
+        if self.output_initializer == 'zeros':
+            self.lin.weight.data.fill_(0)
+        elif self.output_initializer == 'glorot_orthogonal':
+            glorot_orthogonal(self.lin.weight, scale=2.0)
 
     def forward(self, x: Tensor, rbf: Tensor, i: Tensor,
                 num_nodes: Optional[int] = None) -> Tensor:
@@ -470,6 +490,9 @@ class DimeNet(torch.nn.Module):
             output blocks. (default: :obj:`3`)
         act (str or Callable, optional): The activation function.
             (default: :obj:`"swish"`)
+        output_initializer (str, optional): The initialization method for the
+            output layer (:obj:`"zeros"`, :obj:`"glorot_orthogonal"`).
+            (default: :obj:`"zeros"`)
     """
 
     url = ('https://github.com/klicperajo/dimenet/raw/master/pretrained/'
@@ -490,6 +513,7 @@ class DimeNet(torch.nn.Module):
         num_after_skip: int = 2,
         num_output_layers: int = 3,
         act: Union[str, Callable] = 'swish',
+        output_initializer: str = 'zeros',
     ):
         super().__init__()
 
@@ -509,8 +533,14 @@ class DimeNet(torch.nn.Module):
         self.emb = EmbeddingBlock(num_radial, hidden_channels, act)
 
         self.output_blocks = torch.nn.ModuleList([
-            OutputBlock(num_radial, hidden_channels, out_channels,
-                        num_output_layers, act) for _ in range(num_blocks + 1)
+            OutputBlock(
+                num_radial,
+                hidden_channels,
+                out_channels,
+                num_output_layers,
+                act,
+                output_initializer,
+            ) for _ in range(num_blocks + 1)
         ])
 
         self.interaction_blocks = torch.nn.ModuleList([
@@ -543,7 +573,8 @@ class DimeNet(torch.nn.Module):
     ) -> Tuple['DimeNet', Dataset, Dataset, Dataset]:  # pragma: no cover
         r"""Returns a pre-trained :class:`DimeNet` model on the
         :class:`~torch_geometric.datasets.QM9` dataset, trained on the
-        specified target :obj:`target`."""
+        specified target :obj:`target`.
+        """
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         import tensorflow as tf
 
@@ -552,7 +583,7 @@ class DimeNet(torch.nn.Module):
         root = osp.expanduser(osp.normpath(root))
         path = osp.join(root, 'pretrained_dimenet', qm9_target_dict[target])
 
-        makedirs(path)
+        os.makedirs(path, exist_ok=True)
         url = f'{cls.url}/{qm9_target_dict[target]}'
 
         if not osp.exists(osp.join(path, 'checkpoint')):
@@ -644,7 +675,8 @@ class DimeNet(torch.nn.Module):
         pos: Tensor,
         batch: OptTensor = None,
     ) -> Tensor:
-        r"""
+        r"""Forward pass.
+
         Args:
             z (torch.Tensor): Atomic number of each atom with shape
                 :obj:`[num_atoms]`.
@@ -664,10 +696,14 @@ class DimeNet(torch.nn.Module):
         dist = (pos[i] - pos[j]).pow(2).sum(dim=-1).sqrt()
 
         # Calculate angles.
-        pos_i = pos[idx_i]
-        pos_ji, pos_ki = pos[idx_j] - pos_i, pos[idx_k] - pos_i
-        a = (pos_ji * pos_ki).sum(dim=-1)
-        b = torch.cross(pos_ji, pos_ki).norm(dim=-1)
+        if isinstance(self, DimeNetPlusPlus):
+            pos_jk, pos_ij = pos[idx_j] - pos[idx_k], pos[idx_i] - pos[idx_j]
+            a = (pos_ij * pos_jk).sum(dim=-1)
+            b = torch.cross(pos_ij, pos_jk, dim=1).norm(dim=-1)
+        elif isinstance(self, DimeNet):
+            pos_ji, pos_ki = pos[idx_j] - pos[idx_i], pos[idx_k] - pos[idx_i]
+            a = (pos_ji * pos_ki).sum(dim=-1)
+            b = torch.cross(pos_ji, pos_ki, dim=1).norm(dim=-1)
         angle = torch.atan2(b, a)
 
         rbf = self.rbf(dist)
@@ -721,6 +757,9 @@ class DimeNetPlusPlus(DimeNet):
             output blocks. (default: :obj:`3`)
         act: (str or Callable, optional): The activation funtion.
             (default: :obj:`"swish"`)
+        output_initializer (str, optional): The initialization method for the
+            output layer (:obj:`"zeros"`, :obj:`"glorot_orthogonal"`).
+            (default: :obj:`"zeros"`)
     """
 
     url = ('https://raw.githubusercontent.com/gasteigerjo/dimenet/'
@@ -743,6 +782,7 @@ class DimeNetPlusPlus(DimeNet):
         num_after_skip: int = 2,
         num_output_layers: int = 3,
         act: Union[str, Callable] = 'swish',
+        output_initializer: str = 'zeros',
     ):
         act = activation_resolver(act)
 
@@ -760,6 +800,7 @@ class DimeNetPlusPlus(DimeNet):
             num_after_skip=num_after_skip,
             num_output_layers=num_output_layers,
             act=act,
+            output_initializer=output_initializer,
         )
 
         # We are re-using the RBF, SBF and embedding layers of `DimeNet` and
@@ -775,6 +816,7 @@ class DimeNetPlusPlus(DimeNet):
                 out_channels,
                 num_output_layers,
                 act,
+                output_initializer,
             ) for _ in range(num_blocks + 1)
         ])
 
@@ -803,7 +845,8 @@ class DimeNetPlusPlus(DimeNet):
                Dataset]:  # pragma: no cover
         r"""Returns a pre-trained :class:`DimeNetPlusPlus` model on the
         :class:`~torch_geometric.datasets.QM9` dataset, trained on the
-        specified target :obj:`target`."""
+        specified target :obj:`target`.
+        """
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         import tensorflow as tf
 
@@ -812,7 +855,7 @@ class DimeNetPlusPlus(DimeNet):
         root = osp.expanduser(osp.normpath(root))
         path = osp.join(root, 'pretrained_dimenet_pp', qm9_target_dict[target])
 
-        makedirs(path)
+        os.makedirs(path, exist_ok=True)
         url = f'{cls.url}/{qm9_target_dict[target]}'
 
         if not osp.exists(osp.join(path, 'checkpoint')):

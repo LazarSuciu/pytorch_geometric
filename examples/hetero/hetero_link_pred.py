@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import Linear
 
+import torch_geometric
 import torch_geometric.transforms as T
 from torch_geometric.datasets import MovieLens
 from torch_geometric.nn import SAGEConv, to_hetero
@@ -14,7 +15,7 @@ parser.add_argument('--use_weighted_loss', action='store_true',
                     help='Whether to use weighted MSE loss.')
 args = parser.parse_args()
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch_geometric.device('auto')
 
 path = osp.join(osp.dirname(osp.realpath(__file__)), '../../data/MovieLens')
 dataset = MovieLens(path, model_name='all-MiniLM-L6-v2')

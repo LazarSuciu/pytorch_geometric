@@ -1,7 +1,9 @@
 import copy
-from typing import Any, Dict, Optional
+import warnings
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import torch
+from torch import Tensor
 from torch.nn import Module, ModuleDict, ModuleList, Sequential
 
 try:
@@ -17,8 +19,8 @@ class Transformer:
     :class:`~torch.nn.Module`.
     :class:`Transformer` works entirely symbolically.
 
-    Methods in the :class:`Transformer` class can be overriden to customize the
-    behavior of transformation.
+    Methods in the :class:`Transformer` class can be overridden to customize
+    the behavior of transformation.
 
     .. code-block:: none
 
@@ -111,8 +113,8 @@ class Transformer:
 
     def transform(self) -> GraphModule:
         r"""Transforms :obj:`self.module` and returns a transformed
-        :class:`torch.fx.GraphModule`."""
-
+        :class:`torch.fx.GraphModule`.
+        """
         if self.debug:
             self.graph.print_tabular()
             print()
@@ -127,6 +129,13 @@ class Transformer:
         # We iterate over each node and determine its output level
         # (node-level, edge-level) by filling `self._state`:
         for node in list(self.graph.nodes):
+            if node.op == 'call_function' and 'training' in node.kwargs:
+                warnings.warn(f"Found function '{node.name}' with keyword "
+                              f"argument 'training'. During FX tracing, this "
+                              f"will likely be baked in as a constant value. "
+                              f"Consider replacing this function by a module "
+                              f"to properly encapsulate its training flag.")
+
             if node.op == 'placeholder':
                 if node.name not in self._state:
                     if 'edge' in node.name or 'adj' in node.name:
@@ -193,7 +202,8 @@ class Transformer:
             ])
         elif isinstance(module, ModuleDict):
             return ModuleDict({
-                key: self._init_submodule(submodule, f'{target}.{key}')
+                key:
+                self._init_submodule(submodule, f'{target}.{key}')
                 for key, submodule in module.items()
             })
         else:
@@ -274,13 +284,13 @@ def symbolic_trace(
             # TODO We currently only trace top-level modules.
             return not isinstance(module, torch.nn.Sequential)
 
-        # Note: This is a hack around the fact that `Aggregaton.__call__`
+        # Note: This is a hack around the fact that `Aggregation.__call__`
         # is not patched by the base implementation of `trace`.
         # see https://github.com/pyg-team/pytorch_geometric/pull/5021 for
         # details on the rationale
         # TODO: Revisit https://github.com/pyg-team/pytorch_geometric/pull/5021
         @st.compatibility(is_backward_compatible=True)
-        def trace(self, root: st.Union[torch.nn.Module, st.Callable[..., Any]],
+        def trace(self, root: Union[torch.nn.Module, Callable[..., Any]],
                   concrete_args: Optional[Dict[str, Any]] = None) -> Graph:
 
             if isinstance(root, torch.nn.Module):
@@ -294,17 +304,16 @@ def symbolic_trace(
                 self.root = torch.nn.Module()
                 fn = root
 
-            tracer_cls: Optional[st.Type['Tracer']] = getattr(
+            tracer_cls: Optional[Type['Tracer']] = getattr(
                 self, '__class__', None)
             self.graph = Graph(tracer_cls=tracer_cls)
 
-            self.tensor_attrs: Dict[st.Union[torch.Tensor, st.ScriptObject],
-                                    str] = {}
+            self.tensor_attrs: Dict[Union[Tensor, st.ScriptObject], str] = {}
 
             def collect_tensor_attrs(m: torch.nn.Module,
-                                     prefix_atoms: st.List[str]):
+                                     prefix_atoms: List[str]):
                 for k, v in m.__dict__.items():
-                    if isinstance(v, (torch.Tensor, st.ScriptObject)):
+                    if isinstance(v, (Tensor, st.ScriptObject)):
                         self.tensor_attrs[v] = '.'.join(prefix_atoms + [k])
                 for k, v in m.named_children():
                     collect_tensor_attrs(v, prefix_atoms + [k])

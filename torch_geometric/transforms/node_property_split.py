@@ -14,7 +14,7 @@ class NodePropertySplit(BaseTransform):
     r"""Creates a node-level split with distributional shift based on a given
     node property, as proposed in the `"Evaluating Robustness and Uncertainty
     of Graph Models Under Structural Distributional Shifts"
-    <https://arxiv.org/abs/2302.13875v1>`__ paper
+    <https://arxiv.org/abs/2302.13875>`__ paper
     (functional name: :obj:`node_property_split`).
 
     It splits the nodes in a given graph into five non-intersecting parts
@@ -44,8 +44,6 @@ class NodePropertySplit(BaseTransform):
             of the node property, so that nodes with greater values of the
             property are considered to be OOD (default: :obj:`True`)
 
-    Example:
-
     .. code-block:: python
 
         from torch_geometric.transforms import NodePropertySplit
@@ -55,7 +53,7 @@ class NodePropertySplit(BaseTransform):
 
         property_name = 'popularity'
         ratios = [0.3, 0.1, 0.1, 0.3, 0.2]
-        tranaform = NodePropertySplit(property_name, ratios)
+        transform = NodePropertySplit(property_name, ratios)
 
         data = transform(data)
     """

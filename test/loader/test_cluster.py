@@ -3,21 +3,11 @@ import torch
 
 from torch_geometric.data import Data
 from torch_geometric.loader import ClusterData, ClusterLoader
-from torch_geometric.testing import onlyFullTest
+from torch_geometric.testing import onlyFullTest, onlyOnline, withMETIS
 from torch_geometric.utils import sort_edge_index
 
-try:
-    # TODO Using `pyg-lib` metis partitioning leads to some weird bugs in the
-    # CI. As such, we require `torch-sparse` for these tests for now.
-    rowptr = torch.tensor([0, 1])
-    col = torch.tensor([0])
-    torch.ops.torch_sparse.partition(rowptr, col, None, 1, True)
-    WITH_METIS = True
-except (AttributeError, RuntimeError):
-    WITH_METIS = False
 
-
-@pytest.mark.skipif(not WITH_METIS, reason='Not compiled with METIS support')
+@withMETIS
 def test_cluster_gcn():
     adj = torch.tensor([
         [1, 1, 1, 0, 1, 0],
@@ -28,7 +18,14 @@ def test_cluster_gcn():
         [0, 1, 0, 1, 0, 1],
     ])
 
-    x = torch.Tensor([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]])
+    x = torch.tensor([
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [2.0, 2.0],
+        [3.0, 3.0],
+        [4.0, 4.0],
+        [5.0, 5.0],
+    ])
     edge_index = adj.nonzero(as_tuple=False).t()
     edge_attr = torch.arange(edge_index.size(1))
     n_id = torch.arange(6)
@@ -110,7 +107,7 @@ def test_cluster_gcn():
     assert torch.equal(out.edge_attr, tmp[1])
 
 
-@pytest.mark.skipif(not WITH_METIS, reason='Not compiled with METIS support')
+@withMETIS
 def test_keep_inter_cluster_edges():
     adj = torch.tensor([
         [1, 1, 1, 0, 1, 0],
@@ -121,7 +118,14 @@ def test_keep_inter_cluster_edges():
         [0, 1, 0, 1, 0, 1],
     ])
 
-    x = torch.Tensor([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]])
+    x = torch.tensor([
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [2.0, 2.0],
+        [3.0, 3.0],
+        [4.0, 4.0],
+        [5.0, 5.0],
+    ])
     edge_index = adj.nonzero(as_tuple=False).t()
     edge_attr = torch.arange(edge_index.size(1))
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
@@ -145,13 +149,20 @@ def test_keep_inter_cluster_edges():
     assert data.edge_index.size(1) == data.edge_attr.size(0)
 
 
+@withMETIS
+@onlyOnline
 @onlyFullTest
-@pytest.mark.skipif(not WITH_METIS, reason='Not compiled with METIS support')
-def test_cluster_gcn_correctness(get_dataset):
+@pytest.mark.parametrize('sparse_format', ['csr', 'csc'])
+def test_cluster_gcn_correctness(get_dataset, sparse_format):
     dataset = get_dataset('Cora')
     data = dataset[0].clone()
     data.n_id = torch.arange(data.num_nodes)
-    cluster_data = ClusterData(data, num_parts=10, log=False)
+    cluster_data = ClusterData(
+        data,
+        num_parts=10,
+        log=False,
+        sparse_format=sparse_format,
+    )
     loader = ClusterLoader(cluster_data, batch_size=3, shuffle=False)
 
     for batch1 in loader:
@@ -162,7 +173,10 @@ def test_cluster_gcn_correctness(get_dataset):
         assert torch.equal(batch1.x, batch2.x)
         assert torch.equal(
             batch1.edge_index,
-            sort_edge_index(batch2.edge_index),
+            sort_edge_index(
+                batch2.edge_index,
+                sort_by_row=sparse_format == 'csr',
+            ),
         )
 
 

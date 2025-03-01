@@ -17,6 +17,15 @@ class SetTransformerAggregation(Aggregation):
     the `"Graph Neural Networks with Adaptive Readouts"
     <https://arxiv.org/abs/2211.04952>`_ paper.
 
+    .. note::
+
+        :class:`SetTransformerAggregation` requires sorted indices :obj:`index`
+        as input. Specifically, if you use this aggregation as part of
+        :class:`~torch_geometric.nn.conv.MessagePassing`, ensure that
+        :obj:`edge_index` is sorted by destination nodes, either by manually
+        sorting edge indices via :meth:`~torch_geometric.utils.sort_edge_index`
+        or by calling :meth:`torch_geometric.data.Data.sort`.
+
     Args:
         channels (int): Size of each input sample.
         num_seed_points (int, optional): Number of seed points.
@@ -29,7 +38,7 @@ class SetTransformerAggregation(Aggregation):
             (default: :obj:`1`)
         concat (bool, optional): If set to :obj:`False`, the seed embeddings
             are averaged instead of concatenated. (default: :obj:`True`)
-        norm (str, optional): If set to :obj:`True`, will apply layer
+        layer_norm (str, optional): If set to :obj:`True`, will apply layer
             normalization. (default: :obj:`False`)
         dropout (float, optional): Dropout probability of attention weights.
             (default: :obj:`0`)
@@ -95,6 +104,8 @@ class SetTransformerAggregation(Aggregation):
 
         for decoder in self.decoders:
             x = decoder(x)
+
+        x = x.nan_to_num()
 
         return x.flatten(1, 2) if self.concat else x.mean(dim=1)
 
