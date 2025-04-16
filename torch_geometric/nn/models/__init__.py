@@ -37,6 +37,7 @@ from .sgformer import SGFormer
 from torch_geometric.explain.algorithm.captum import (to_captum_input,
                                                       captum_output_to_dicts)
 from .nbfnet import NBFNet
+from .nbfnet_kg import NBFNet_KG
 
 __all__ = classes = [
     'MLP',
@@ -86,4 +87,5 @@ __all__ = classes = [
     'GLEM',
     'SGFormer',
     'NBFNet',
+    'NBFNet_KG',
 ]
