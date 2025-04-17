@@ -95,6 +95,7 @@ from .hm import HM
 from .ose_gvcs import OSE_GVCS
 from .rcdd import RCDD
 from .opf import OPFDataset
+from .ind_rel_link_pred_dataset import IndRelLinkPredDataset
 
 from .cornell import CornellTemporalHyperGraphDataset
 
@@ -210,6 +211,7 @@ hetero_datasets = [
     'OSE_GVCS',
     'RCDD',
     'OPFDataset',
+    'IndRelLinkPredDataset',
 ]
 hyper_datasets = [
     'CornellTemporalHyperGraphDataset',

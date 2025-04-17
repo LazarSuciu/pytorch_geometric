@@ -29,6 +29,8 @@ from .pmlp import PMLP
 from .neural_fingerprint import NeuralFingerprint
 from .visnet import ViSNet
 from .g_retriever import GRetriever
+from .nbfnet import NBFNet
+from .nbfnet_kg import NBFNet_KG
 
 # Deprecated:
 from torch_geometric.explain.algorithm.captum import (to_captum_input,
@@ -77,4 +79,6 @@ __all__ = classes = [
     'NeuralFingerprint',
     'ViSNet',
     'GRetriever',
+    'NBFNet',
+    'NBFNet_KG',
 ]
